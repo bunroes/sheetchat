@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>제목 없는 스프레드시트 - 스프레드시트</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='3' y='1' width='18' height='22' rx='2' fill='%230f9d58'/><rect x='6' y='9' width='12' height='9' fill='white'/><path d='M6 12h12M6 15h12M11 9v9' stroke='%230f9d58' stroke-width='1'/></svg>">
+<link rel="icon" id="favicon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='3' y='1' width='18' height='22' rx='2' fill='%230f9d58'/><rect x='6' y='9' width='12' height='9' fill='white'/><path d='M6 12h12M6 15h12M11 9v9' stroke='%230f9d58' stroke-width='1'/></svg>">
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
@@ -64,6 +64,7 @@
   .tab:hover { background: #e8eaed; }
   .tab.active { background: #e1e9f7; color: #0b57d0; font-weight: 500; }
   .tab.unread { font-weight: bold; color: #1f1f1f; }
+  .tab .cnt { background: #d93025; color: #fff; border-radius: 9px; font-size: 11px; padding: 0 6px; font-weight: bold; }
   .tab .x { visibility: hidden; font-size: 12px; color: #80868b; }
   .tab:hover .x { visibility: visible; }
 
@@ -79,6 +80,7 @@
   .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
   .btn { border: none; border-radius: 20px; padding: 9px 20px; background: none; color: #0b57d0; font-weight: 500; }
   .btn.primary { background: #0b57d0; color: #fff; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
   .hint { color: #5f6368; font-size: 12px; margin-top: 8px; }
 
   .toast { position: fixed; left: 24px; bottom: 56px; background: #323232; color: #fff; padding: 12px 18px; border-radius: 4px; display: none; z-index: 20; }
@@ -137,6 +139,8 @@
     <h2>이름 설정</h2>
     <input type="text" id="nameInput" maxlength="20" placeholder="이름">
     <div class="swatches" id="swatches"></div>
+    <label class="check"><input type="checkbox" id="notifyInput"> 새 메시지 알림 받기</label>
+    <div class="hint">알림에는 메시지 내용 없이 "새로운 수정 사항"이라고만 표시돼요.</div>
     <div class="actions"><button class="btn primary" id="nameOk">확인</button></div>
   </div>
 </div>
@@ -173,7 +177,10 @@ let me = store.get('me', null);            // { name, color }
 let rooms = store.get('rooms', []);        // [{ id, title }]
 let current = null;
 let messages = {};                         // roomId -> []
-const unread = new Set();
+const unread = {};                        // roomId -> 안 읽은 메시지 수
+const cid = store.get('cid', null) || Math.random().toString(36).slice(2, 12);
+store.set('cid', cid);
+let notify = store.get('notify', false);
 let hidden = false;                        // Esc: 위장 모드
 
 const socket = io();
@@ -184,6 +191,7 @@ let pickedColor = null;
 function openNameDlg() {
   $('nameInput').value = me?.name || '';
   pickedColor = me?.color || null;
+  $('notifyInput').checked = notify && typeof Notification !== 'undefined' && Notification.permission === 'granted';
   renderSwatches();
   $('nameDlg').classList.add('open');
   $('nameInput').focus();
@@ -206,6 +214,7 @@ $('nameOk').onclick = () => {
   if (!name) return $('nameInput').focus();
   me = { name, color: pickedColor || hashColor(name) };
   store.set('me', me);
+  setNotify($('notifyInput').checked);
   $('nameDlg').classList.remove('open');
   renderAvatar();
   $('input').focus();
@@ -237,11 +246,10 @@ async function createRoom() {
 }
 function open(id) {
   current = id;
-  unread.delete(id);
+  delete unread[id];
   history.replaceState(null, '', '/d/' + id);
-  const t = rooms.find((r) => r.id === id)?.title || '';
-  $('title').value = t;
-  document.title = t + ' - 스프레드시트';
+  $('title').value = rooms.find((r) => r.id === id)?.title || '';
+  updateBadge();
   renderTabs();
   renderGrid(true);
 }
@@ -263,8 +271,13 @@ function renderTabs() {
   el.append(add, all);
   for (const r of rooms) {
     const t = document.createElement('div');
-    t.className = 'tab' + (r.id === current ? ' active' : '') + (unread.has(r.id) ? ' unread' : '');
+    t.className = 'tab' + (r.id === current ? ' active' : '') + (unread[r.id] ? ' unread' : '');
     t.textContent = r.title;
+    if (unread[r.id]) {
+      const c = document.createElement('span');
+      c.className = 'cnt'; c.textContent = unread[r.id];
+      t.appendChild(c);
+    }
     const x = document.createElement('span');
     x.className = 'x'; x.textContent = '✕';
     x.onclick = (e) => { e.stopPropagation(); removeRoom(r.id); };
@@ -283,7 +296,8 @@ $('title').addEventListener('change', () => {
 socket.on('renamed', ({ roomId, title }) => {
   const r = rooms.find((x) => x.id === roomId);
   if (r) { r.title = title; saveRooms(); }
-  if (roomId === current) { $('title').value = title; document.title = title + ' - 스프레드시트'; }
+  if (roomId === current) $('title').value = title;
+  updateBadge();
   renderTabs();
 });
 
@@ -300,17 +314,42 @@ function cell(text, cls, color) {
   td.textContent = text ?? '';
   return td;
 }
+// 위장 모드에서 보여줄 영단어장
+const VOCAB = [
+  ['abandon', 'v.', '버리다, 포기하다', 'They had to abandon the car in the snow.'],
+  ['abundant', 'adj.', '풍부한', 'The region has abundant natural resources.'],
+  ['accommodate', 'v.', '수용하다, 맞추다', 'The hotel can accommodate 200 guests.'],
+  ['acquire', 'v.', '얻다, 습득하다', 'She acquired a good knowledge of French.'],
+  ['adequate', 'adj.', '충분한, 적절한', 'The room was small but adequate.'],
+  ['advocate', 'v.', '옹호하다', 'He advocates a ban on smoking.'],
+  ['allocate', 'v.', '할당하다', 'Funds were allocated to each school.'],
+  ['ambiguous', 'adj.', '모호한', 'The wording of the contract is ambiguous.'],
+  ['anticipate', 'v.', '예상하다', 'We anticipate a large crowd tonight.'],
+  ['apparent', 'adj.', '분명한, 겉보기의', 'For no apparent reason, he left early.'],
+  ['assess', 'v.', '평가하다', 'It is hard to assess the damage.'],
+  ['attribute', 'v.', '~의 탓으로 돌리다', 'She attributes her success to hard work.'],
+  ['beneficial', 'adj.', '이로운', 'Exercise is beneficial to health.'],
+  ['coherent', 'adj.', '일관성 있는', 'He gave a coherent account of events.'],
+  ['compensate', 'v.', '보상하다', 'Nothing can compensate for the loss.'],
+  ['comprehensive', 'adj.', '포괄적인', 'We offer a comprehensive range of services.'],
+  ['consequence', 'n.', '결과', 'He acted without thinking of the consequences.'],
+  ['considerable', 'adj.', '상당한', 'The project cost a considerable amount.'],
+  ['contradict', 'v.', '반박하다, 모순되다', 'The two reports contradict each other.'],
+  ['crucial', 'adj.', '결정적인', 'This is a crucial moment in her career.'],
+  ['deliberate', 'adj.', '의도적인, 신중한', 'It was a deliberate attempt to mislead.'],
+  ['diminish', 'v.', '줄어들다', 'His influence has diminished over time.'],
+  ['distinct', 'adj.', '뚜렷한, 별개의', 'There is a distinct smell of gas.'],
+  ['eliminate', 'v.', '제거하다', 'The new system will eliminate errors.'],
+  ['emphasize', 'v.', '강조하다', 'He emphasized the need for caution.'],
+  ['equivalent', 'adj.', '동등한', 'Eight kilometres is roughly equivalent to five miles.'],
+  ['inevitable', 'adj.', '피할 수 없는', 'Change is inevitable.'],
+  ['substantial', 'adj.', '상당한, 실질적인', 'She inherited a substantial sum.'],
+];
 function fakeRows() {
-  // 위장 모드에서 보여줄 그럴듯한 데이터
-  const head = ['항목', '1월', '2월', '3월', '4월', '5월', '6월', '합계'];
-  const items = ['임대료', '관리비', '통신비', '식비', '교통비', '소모품', '보험료', '구독', '기타'];
-  const rows = [head];
-  let seed = 7;
-  const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
-  for (const it of items) {
-    const v = Array.from({ length: 6 }, () => Math.round(rnd() * 900 + 100) * 1000);
-    rows.push([it, ...v.map((n) => n.toLocaleString()), v.reduce((a, b) => a + b).toLocaleString()]);
-  }
+  const rows = [[['No.', 1], ['Word', 1], ['품사', 1], ['뜻', 2], ['예문', 4], ['암기', 1]]];
+  VOCAB.forEach(([w, pos, mean, ex], i) => {
+    rows.push([[String(i + 1), 1], [w, 1], [pos, 1], [mean, 2], [ex, 4], [i % 3 === 2 ? '' : '✓', 1]]);
+  });
   return rows;
 }
 function renderGrid(scrollBottom) {
@@ -338,7 +377,13 @@ function renderGrid(scrollBottom) {
   };
 
   if (hidden) {
-    fakeRows().forEach((r, i) => addRow(r.map((v, j) => cell(v, j > 0 && i > 0 ? 'num' : (i === 0 ? 'name' : '')))));
+    fakeRows().forEach((r, i) => addRow(r.map(([v, span], j) => {
+      const td = cell(v, i === 0 ? 'name' : (j === 0 ? 'num' : ''));
+      td.colSpan = span;
+      if (i > 0 && j === 5) td.style.textAlign = 'center';
+      if (i > 0 && j === 1) td.style.fontWeight = 'bold';
+      return td;
+    })));
   } else {
     for (const m of messages[current] || []) {
       const blank = () => cell('');
@@ -381,14 +426,53 @@ $('input').addEventListener('keydown', (e) => {
   const text = $('input').value.trim();
   if (!text || !current) return;
   if (!me) return openNameDlg();
-  socket.emit('message', { roomId: current, name: me.name, color: me.color, text });
+  socket.emit('message', { roomId: current, name: me.name, color: me.color, text, cid });
   $('input').value = '';
 });
 socket.on('message', ({ roomId, msg }) => {
   (messages[roomId] ||= []).push(msg);
-  if (roomId === current) renderGrid(msg.name === me?.name);
-  else { unread.add(roomId); renderTabs(); }
+  const mine = msg.cid === cid;
+  if (roomId === current) renderGrid(mine);
+  if (mine) return;
+  if (roomId !== current || document.hidden) {
+    unread[roomId] = (unread[roomId] || 0) + 1;
+    renderTabs();
+    updateBadge();
+  }
+  if (document.hidden) showNotification(roomId);
 });
+
+// ---------- 알림 ----------
+// 브라우저 탭: 제목 앞에 (안 읽은 수), 아이콘에 빨간 점
+const ICON = $('favicon').getAttribute('href');
+const ICON_DOT = ICON.replace('</svg>', "<circle cx='19' cy='5' r='5' fill='%23d93025'/></svg>");
+function updateBadge() {
+  const n = Object.values(unread).reduce((a, b) => a + b, 0);
+  const t = rooms.find((r) => r.id === current)?.title || '';
+  document.title = (n ? `(${n}) ` : '') + t + ' - 스프레드시트';
+  $('favicon').href = n ? ICON_DOT : ICON;
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && current && unread[current]) {
+    delete unread[current];
+    renderTabs();
+    updateBadge();
+  }
+});
+async function setNotify(on) {
+  if (on && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+    on = (await Notification.requestPermission()) === 'granted';
+    if (!on) toast('브라우저에서 알림이 차단되어 있어요');
+  }
+  notify = on;
+  store.set('notify', notify);
+}
+function showNotification(roomId) {
+  if (!notify || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  const title = rooms.find((r) => r.id === roomId)?.title || '스프레드시트';
+  const n = new Notification(title, { body: '새로운 수정 사항이 있습니다', icon: ICON, tag: roomId });
+  n.onclick = () => { window.focus(); open(roomId); n.close(); };
+}
 
 // 48시간 지난 메시지는 화면에서도 제거
 setInterval(() => {
@@ -397,7 +481,7 @@ setInterval(() => {
   if (!hidden) renderGrid(false);
 }, 60 * 1000);
 
-// Esc: 메시지 숨기기(가계부처럼 보이게) / 다시 누르면 복귀
+// Esc: 메시지 숨기기(영단어장처럼 보이게) / 다시 누르면 복귀
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || document.querySelector('.dim.open')) return;
   hidden = !hidden;

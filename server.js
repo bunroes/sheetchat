@@ -75,13 +75,14 @@ io.on('connection', (socket) => {
 
   socket.on('leave', (roomId) => socket.leave(roomId));
 
-  socket.on('message', ({ roomId, name, color, text } = {}) => {
+  socket.on('message', ({ roomId, name, color, text, cid } = {}) => {
     const room = db.rooms[roomId];
     text = clean(text, MAX_TEXT);
     name = clean(name, MAX_NAME) || '익명';
     color = /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#1a73e8';
     if (!room || !text || !socket.rooms.has(roomId)) return;
-    const msg = { id: newId(), name, color, text, ts: Date.now() };
+    cid = clean(cid, 32);
+    const msg = { id: newId(), name, color, text, cid, ts: Date.now() };
     room.messages.push(msg);
     save();
     io.to(roomId).emit('message', { roomId, msg });
