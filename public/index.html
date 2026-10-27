@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>제목 없는 스프레드시트 - 스프레드시트</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='3' y='1' width='18' height='22' rx='2' fill='%230f9d58'/><rect x='6' y='9' width='12' height='9' fill='white'/><path d='M6 12h12M6 15h12M11 9v9' stroke='%230f9d58' stroke-width='1'/></svg>">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { font-family: Arial, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; font-size: 13px; color: #202124;
+         background: #f9fbfd; display: flex; flex-direction: column; overflow: hidden; }
+  button { font: inherit; cursor: pointer; }
+
+  /* 상단 */
+  .top { display: flex; align-items: center; padding: 8px 16px 0 12px; gap: 8px; }
+  .logo { width: 28px; height: 38px; flex: none; }
+  .titles { flex: 1; min-width: 0; }
+  .title-row { display: flex; align-items: center; gap: 6px; }
+  #title { font-size: 18px; border: 1px solid transparent; border-radius: 4px; padding: 2px 6px; background: none;
+           max-width: 340px; min-width: 60px; color: #1f1f1f; }
+  #title:hover { border-color: #747775; } #title:focus { outline: 2px solid #0b57d0; border-color: transparent; }
+  .ico { color: #444746; font-size: 15px; padding: 2px 4px; }
+  .menus { display: flex; gap: 2px; flex-wrap: wrap; }
+  .menus span { padding: 3px 7px; border-radius: 4px; font-size: 14px; color: #1f1f1f; cursor: default; }
+  .menus span:hover { background: #e8eaed; }
+  .right { display: flex; align-items: center; gap: 12px; }
+  .share { background: #c2e7ff; border: none; border-radius: 20px; padding: 9px 18px; font-size: 14px; font-weight: 500; color: #001d35; display: flex; gap: 6px; align-items: center; }
+  .share:hover { background: #b3d7ef; }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; color: #fff; border: none; font-weight: bold; font-size: 14px; }
+
+  .toolbar { margin: 8px 16px 6px; background: #edf2fa; border-radius: 24px; display: flex; align-items: center;
+             gap: 2px; padding: 4px 12px; overflow: hidden; white-space: nowrap; color: #444746; }
+  .toolbar span { padding: 3px 7px; border-radius: 4px; font-size: 14px; }
+  .toolbar span:hover { background: #dde3ea; }
+  .toolbar .sep { width: 1px; height: 20px; background: #c7c7c7; padding: 0; margin: 0 4px; }
+
+  .fbar { display: flex; align-items: center; border-top: 1px solid #e1e3e1; border-bottom: 1px solid #e1e3e1; background: #fff; height: 30px; }
+  #namebox { width: 90px; padding: 0 10px; border-right: 1px solid #e1e3e1; height: 100%; display: flex; align-items: center; color: #444746; }
+  .fx { padding: 0 10px; color: #80868b; font-style: italic; font-family: "Times New Roman", serif; font-size: 15px; border-right: 1px solid #e1e3e1; height: 100%; display: flex; align-items: center; }
+  #input { flex: 1; border: none; outline: none; padding: 0 10px; font: inherit; height: 100%; }
+
+  /* 그리드 */
+  .grid-wrap { flex: 1; overflow: auto; background: #fff; position: relative; }
+  table { border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+  th, td { border-right: 1px solid #e2e3e3; border-bottom: 1px solid #e2e3e3; height: 21px; padding: 2px 4px;
+           overflow: hidden; white-space: nowrap; vertical-align: bottom; }
+  thead th { position: sticky; top: 0; background: #f8f9fa; color: #444746; font-weight: normal; font-size: 11px; z-index: 2; text-align: center; }
+  tbody th { position: sticky; left: 0; background: #f8f9fa; color: #444746; font-weight: normal; font-size: 11px; width: 46px; z-index: 1; text-align: center; vertical-align: middle; }
+  thead th { width: 100px; }
+  thead th.corner { left: 0; z-index: 3; width: 46px; }
+  td { width: 100px; min-width: 100px; cursor: cell; }
+  td.sel { outline: 2px solid #1a73e8; outline-offset: -2px; }
+  td.name { font-weight: bold; font-size: 12px; }
+  td.msg { white-space: pre-wrap; word-break: break-word; vertical-align: top; }
+  td.time { color: #80868b; font-size: 12px; text-align: right; }
+  td.num { text-align: right; }
+
+  /* 하단 시트 탭 = 채팅방 */
+  .tabs { display: flex; align-items: center; background: #f9fbfd; border-top: 1px solid #e1e3e1; height: 40px; padding: 0 8px; gap: 4px; overflow-x: auto; }
+  .tabs .tbtn { background: none; border: none; font-size: 18px; color: #444746; width: 32px; height: 32px; border-radius: 50%; flex: none; }
+  .tabs .tbtn:hover { background: #e8eaed; }
+  .tab { padding: 6px 14px; border-radius: 4px 4px 0 0; font-size: 14px; color: #444746; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 6px; flex: none; }
+  .tab:hover { background: #e8eaed; }
+  .tab.active { background: #e1e9f7; color: #0b57d0; font-weight: 500; }
+  .tab.unread { font-weight: bold; color: #1f1f1f; }
+  .tab .x { visibility: hidden; font-size: 12px; color: #80868b; }
+  .tab:hover .x { visibility: visible; }
+
+  /* 대화상자 */
+  .dim { position: fixed; inset: 0; background: rgba(32,33,36,.4); display: none; align-items: center; justify-content: center; z-index: 10; padding: 16px; }
+  .dim.open { display: flex; }
+  .dialog { background: #fff; border-radius: 8px; padding: 24px; width: 100%; max-width: 420px; box-shadow: 0 4px 16px rgba(0,0,0,.25); }
+  .dialog h2 { margin: 0 0 16px; font-size: 20px; font-weight: normal; }
+  .dialog input[type=text] { width: 100%; padding: 10px; font: inherit; font-size: 14px; border: 1px solid #747775; border-radius: 4px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+  .swatch { width: 28px; height: 28px; border-radius: 50%; border: 3px solid transparent; }
+  .swatch.on { border-color: #202124; }
+  .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .btn { border: none; border-radius: 20px; padding: 9px 20px; background: none; color: #0b57d0; font-weight: 500; }
+  .btn.primary { background: #0b57d0; color: #fff; }
+  .hint { color: #5f6368; font-size: 12px; margin-top: 8px; }
+
+  .toast { position: fixed; left: 24px; bottom: 56px; background: #323232; color: #fff; padding: 12px 18px; border-radius: 4px; display: none; z-index: 20; }
+
+  @media (max-width: 700px) {
+    .menus, .toolbar, .right .ico { display: none; }
+    .top { padding: 8px 12px 6px; }
+    #title { max-width: 55vw; }
+    .share { padding: 8px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <svg class="logo" viewBox="0 0 24 32"><path d="M15 0H2.5A2.5 2.5 0 0 0 0 2.5v27A2.5 2.5 0 0 0 2.5 32h19a2.5 2.5 0 0 0 2.5-2.5V9z" fill="#0f9d58"/><path d="M15 0v6.5A2.5 2.5 0 0 0 17.5 9H24z" fill="#87ceac"/><rect x="5" y="13" width="14" height="11" fill="#fff"/><path d="M5 16.7h14M5 20.3h14M10 13v11" stroke="#0f9d58" stroke-width="1.2"/></svg>
+  <div class="titles">
+    <div class="title-row">
+      <input id="title" value="제목 없는 스프레드시트" spellcheck="false">
+      <span class="ico">☆</span><span class="ico">⇪</span><span class="ico">☁</span>
+    </div>
+    <div class="menus">
+      <span>파일</span><span>수정</span><span>보기</span><span>삽입</span><span>서식</span><span>데이터</span><span>도구</span><span>확장 프로그램</span><span>도움말</span>
+    </div>
+  </div>
+  <div class="right">
+    <span class="ico" title="버전 기록">⟲</span>
+    <span class="ico">💬</span>
+    <button class="share" id="shareBtn">🔒 공유</button>
+    <button class="avatar" id="avatar" title="이름 변경">?</button>
+  </div>
+</div>
+
+<div class="toolbar">
+  <span>🔍</span><span>↶</span><span>↷</span><span>🖨</span><span>🖌</span><span>100% ▾</span><i class="sep"></i>
+  <span>₩</span><span>%</span><span>.0</span><span>.00</span><span>123</span><i class="sep"></i>
+  <span>기본값... ▾</span><i class="sep"></i><span>−</span><span>10</span><span>+</span><i class="sep"></i>
+  <span><b>B</b></span><span><i>I</i></span><span><s>S</s></span><span><u>A</u></span><i class="sep"></i>
+  <span>⊞</span><span>⊟</span><i class="sep"></i><span>≡</span><span>⊥</span><span>↵</span><span>⟳</span><i class="sep"></i>
+  <span>🔗</span><span>⊕</span><span>📊</span><span>⏷</span><span>Σ</span>
+</div>
+
+<div class="fbar">
+  <div id="namebox">A1</div>
+  <div class="fx">fx</div>
+  <input id="input" autocomplete="off" spellcheck="false">
+</div>
+
+<div class="grid-wrap" id="gridWrap"><table id="grid"></table></div>
+
+<div class="tabs" id="tabs"></div>
+
+<!-- 이름 설정 -->
+<div class="dim" id="nameDlg">
+  <div class="dialog">
+    <h2>이름 설정</h2>
+    <input type="text" id="nameInput" maxlength="20" placeholder="이름">
+    <div class="swatches" id="swatches"></div>
+    <div class="actions"><button class="btn primary" id="nameOk">확인</button></div>
+  </div>
+</div>
+
+<!-- 공유 -->
+<div class="dim" id="shareDlg">
+  <div class="dialog">
+    <h2>'<span id="shareTitle"></span>' 공유</h2>
+    <input type="text" id="shareLink" readonly>
+    <div class="hint">링크가 있는 사람은 누구나 이 시트에 참여할 수 있습니다.</div>
+    <div class="actions">
+      <button class="btn" id="shareClose">완료</button>
+      <button class="btn primary" id="shareCopy">링크 복사</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const COLORS = ['#d93025','#1a73e8','#188038','#e37400','#a142f4','#007b83','#c5221f','#b06000','#9334e6','#1967d2','#d01884','#5f6368'];
+const COLS = 'ABCDEFGHIJKLMN'.split('');
+const MSG_SPAN = 8;           // 메시지 칸은 A~H 병합
+const TIME_COL = 9;           // J열에 시간
+
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+let me = store.get('me', null);            // { name, color }
+let rooms = store.get('rooms', []);        // [{ id, title }]
+let current = null;
+let messages = {};                         // roomId -> []
+const unread = new Set();
+let hidden = false;                        // Esc: 위장 모드
+
+const socket = io();
+
+// ---------- 이름 ----------
+function hashColor(s) { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) | 0; return COLORS[Math.abs(h) % COLORS.length]; }
+let pickedColor = null;
+function openNameDlg() {
+  $('nameInput').value = me?.name || '';
+  pickedColor = me?.color || null;
+  renderSwatches();
+  $('nameDlg').classList.add('open');
+  $('nameInput').focus();
+}
+function renderSwatches() {
+  const cur = pickedColor || hashColor($('nameInput').value || 'x');
+  $('swatches').innerHTML = '';
+  for (const c of COLORS) {
+    const b = document.createElement('button');
+    b.className = 'swatch' + (c === cur ? ' on' : '');
+    b.style.background = c;
+    b.onclick = () => { pickedColor = c; renderSwatches(); };
+    $('swatches').appendChild(b);
+  }
+}
+$('nameInput').addEventListener('input', () => { if (!me?.color) renderSwatches(); });
+$('nameInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('nameOk').click(); });
+$('nameOk').onclick = () => {
+  const name = $('nameInput').value.trim();
+  if (!name) return $('nameInput').focus();
+  me = { name, color: pickedColor || hashColor(name) };
+  store.set('me', me);
+  $('nameDlg').classList.remove('open');
+  renderAvatar();
+  $('input').focus();
+};
+$('avatar').onclick = openNameDlg;
+function renderAvatar() {
+  $('avatar').textContent = me ? me.name[0].toUpperCase() : '?';
+  $('avatar').style.background = me ? me.color : '#5f6368';
+}
+
+// ---------- 방 ----------
+function saveRooms() { store.set('rooms', rooms); }
+function join(id) {
+  return new Promise((res) => socket.emit('join', id, (r) => {
+    if (r.error) return res(null);
+    messages[id] = r.messages;
+    const room = rooms.find((x) => x.id === id);
+    if (room) room.title = r.title; else rooms.push({ id, title: r.title });
+    saveRooms();
+    res(r);
+  }));
+}
+async function createRoom() {
+  const n = rooms.length + 1;
+  const r = await fetch('/api/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: rooms.length ? `시트${n}` : '제목 없는 스프레드시트' }) }).then((r) => r.json());
+  await join(r.id);
+  open(r.id);
+}
+function open(id) {
+  current = id;
+  unread.delete(id);
+  history.replaceState(null, '', '/d/' + id);
+  const t = rooms.find((r) => r.id === id)?.title || '';
+  $('title').value = t;
+  document.title = t + ' - 스프레드시트';
+  renderTabs();
+  renderGrid(true);
+}
+function removeRoom(id) {
+  if (!confirm('이 시트를 목록에서 삭제할까요? (링크로 다시 들어올 수 있어요)')) return;
+  rooms = rooms.filter((r) => r.id !== id);
+  socket.emit('leave', id);
+  saveRooms();
+  if (current === id) rooms.length ? open(rooms[0].id) : createRoom();
+  else renderTabs();
+}
+function renderTabs() {
+  const el = $('tabs');
+  el.innerHTML = '';
+  const add = document.createElement('button');
+  add.className = 'tbtn'; add.textContent = '+'; add.title = '시트 추가'; add.onclick = createRoom;
+  const all = document.createElement('button');
+  all.className = 'tbtn'; all.textContent = '≡'; all.title = '모든 시트';
+  el.append(add, all);
+  for (const r of rooms) {
+    const t = document.createElement('div');
+    t.className = 'tab' + (r.id === current ? ' active' : '') + (unread.has(r.id) ? ' unread' : '');
+    t.textContent = r.title;
+    const x = document.createElement('span');
+    x.className = 'x'; x.textContent = '✕';
+    x.onclick = (e) => { e.stopPropagation(); removeRoom(r.id); };
+    t.appendChild(x);
+    t.onclick = () => open(r.id);
+    el.appendChild(t);
+  }
+}
+
+// 제목 변경 = 방 이름 변경
+$('title').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
+$('title').addEventListener('change', () => {
+  const title = $('title').value.trim();
+  if (title && current) socket.emit('rename', { roomId: current, title });
+});
+socket.on('renamed', ({ roomId, title }) => {
+  const r = rooms.find((x) => x.id === roomId);
+  if (r) { r.title = title; saveRooms(); }
+  if (roomId === current) { $('title').value = title; document.title = title + ' - 스프레드시트'; }
+  renderTabs();
+});
+
+// ---------- 그리드 ----------
+function fmtTime(ts) {
+  const d = new Date(ts);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function cell(text, cls, color) {
+  const td = document.createElement('td');
+  if (cls) td.className = cls;
+  if (color) td.style.color = color;
+  td.textContent = text ?? '';
+  return td;
+}
+function fakeRows() {
+  // 위장 모드에서 보여줄 그럴듯한 데이터
+  const head = ['항목', '1월', '2월', '3월', '4월', '5월', '6월', '합계'];
+  const items = ['임대료', '관리비', '통신비', '식비', '교통비', '소모품', '보험료', '구독', '기타'];
+  const rows = [head];
+  let seed = 7;
+  const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  for (const it of items) {
+    const v = Array.from({ length: 6 }, () => Math.round(rnd() * 900 + 100) * 1000);
+    rows.push([it, ...v.map((n) => n.toLocaleString()), v.reduce((a, b) => a + b).toLocaleString()]);
+  }
+  return rows;
+}
+function renderGrid(scrollBottom) {
+  const wrap = $('gridWrap');
+  const prevLast = [...$('grid').querySelectorAll('td.last')].pop();
+  const atBottom = !prevLast || prevLast.offsetTop + prevLast.offsetHeight <= wrap.scrollTop + wrap.clientHeight;
+  const table = $('grid');
+  table.innerHTML = '';
+  const thead = document.createElement('thead');
+  const hr = document.createElement('tr');
+  const corner = document.createElement('th'); corner.className = 'corner'; hr.appendChild(corner);
+  for (const c of COLS) { const th = document.createElement('th'); th.textContent = c; hr.appendChild(th); }
+  thead.appendChild(hr);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  let rowNum = 0;
+  const addRow = (cells) => {
+    const tr = document.createElement('tr');
+    const th = document.createElement('th'); th.textContent = ++rowNum; tr.appendChild(th);
+    let used = 0;
+    for (const td of cells) { tr.appendChild(td); used += td.colSpan || 1; }
+    while (used < COLS.length) { tr.appendChild(cell('')); used++; }
+    tbody.appendChild(tr);
+  };
+
+  if (hidden) {
+    fakeRows().forEach((r, i) => addRow(r.map((v, j) => cell(v, j > 0 && i > 0 ? 'num' : (i === 0 ? 'name' : '')))));
+  } else {
+    for (const m of messages[current] || []) {
+      const blank = () => cell('');
+      const nameRow = [cell(m.name, 'name', m.color)];
+      for (let i = 1; i < TIME_COL; i++) nameRow.push(blank());
+      nameRow.push(cell(fmtTime(m.ts), 'time'));
+      addRow(nameRow);
+      const msg = cell(m.text, 'msg last');
+      msg.colSpan = MSG_SPAN;
+      addRow([msg]);
+    }
+  }
+  const minRows = Math.max(rowNum + 30, 60);
+  while (rowNum < minRows) addRow([]);
+  table.appendChild(tbody);
+  // 마지막 메시지가 화면 아래쪽에 보이도록 스크롤 (빈 행이 밑에 깔려 있음)
+  const lasts = table.querySelectorAll('td.last');
+  const last = lasts[lasts.length - 1];
+  if (hidden) wrap.scrollTop = 0;
+  else if (last && (scrollBottom || atBottom)) {
+    wrap.scrollTop = Math.max(0, last.offsetTop + last.offsetHeight - wrap.clientHeight + 90);
+  }
+}
+
+// 셀 선택 흉내
+$('grid').addEventListener('click', (e) => {
+  const td = e.target.closest('td');
+  if (!td) return;
+  document.querySelectorAll('td.sel').forEach((x) => x.classList.remove('sel'));
+  td.classList.add('sel');
+  const tr = td.parentElement;
+  let col = 0;
+  for (const c of tr.children) { if (c === td) break; if (c.tagName === 'TD') col += c.colSpan || 1; }
+  $('namebox').textContent = COLS[col] + tr.children[0].textContent;
+});
+
+// ---------- 메시지 ----------
+$('input').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.isComposing) return;
+  const text = $('input').value.trim();
+  if (!text || !current) return;
+  if (!me) return openNameDlg();
+  socket.emit('message', { roomId: current, name: me.name, color: me.color, text });
+  $('input').value = '';
+});
+socket.on('message', ({ roomId, msg }) => {
+  (messages[roomId] ||= []).push(msg);
+  if (roomId === current) renderGrid(msg.name === me?.name);
+  else { unread.add(roomId); renderTabs(); }
+});
+
+// 48시간 지난 메시지는 화면에서도 제거
+setInterval(() => {
+  const cutoff = Date.now() - 48 * 3600 * 1000;
+  for (const id in messages) messages[id] = messages[id].filter((m) => m.ts > cutoff);
+  if (!hidden) renderGrid(false);
+}, 60 * 1000);
+
+// Esc: 메시지 숨기기(가계부처럼 보이게) / 다시 누르면 복귀
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || document.querySelector('.dim.open')) return;
+  hidden = !hidden;
+  renderGrid(!hidden);
+});
+
+// ---------- 공유 ----------
+function toast(t) { const el = $('toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(el._t); el._t = setTimeout(() => el.style.display = 'none', 2500); }
+$('shareBtn').onclick = () => {
+  $('shareTitle').textContent = $('title').value;
+  $('shareLink').value = location.origin + '/d/' + current;
+  $('shareDlg').classList.add('open');
+  $('shareLink').select();
+};
+$('shareClose').onclick = () => $('shareDlg').classList.remove('open');
+$('shareCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('shareLink').value); }
+  catch { $('shareLink').select(); document.execCommand('copy'); }
+  $('shareDlg').classList.remove('open');
+  toast('링크가 복사되었습니다');
+};
+
+// ---------- 시작 ----------
+async function boot() {
+  renderAvatar();
+  const m = location.pathname.match(/^\/d\/([\w-]+)/);
+  const invited = m?.[1];
+  for (const r of [...rooms]) if (!(await join(r.id))) rooms = rooms.filter((x) => x.id !== r.id);
+  saveRooms();
+  if (invited && !rooms.find((r) => r.id === invited)) {
+    if (!(await join(invited))) toast('시트를 찾을 수 없습니다');
+  }
+  if (invited && rooms.find((r) => r.id === invited)) open(invited);
+  else if (rooms.length) open(rooms[0].id);
+  else await createRoom();
+  if (!me) openNameDlg(); else $('input').focus();
+}
+// 재연결 시 방에 다시 들어가기
+socket.on('connect', () => { if (current) rooms.forEach((r) => socket.emit('join', r.id, (res) => { if (!res.error) { messages[r.id] = res.messages; if (r.id === current) renderGrid(false); } })); });
+boot();
+</script>
+</body>
+</html>
