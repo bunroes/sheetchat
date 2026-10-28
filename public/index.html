@@ -7,6 +7,7 @@
 <link rel="icon" id="favicon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='3' y='1' width='18' height='22' rx='2' fill='%230f9d58'/><rect x='6' y='9' width='12' height='9' fill='white'/><path d='M6 12h12M6 15h12M11 9v9' stroke='%230f9d58' stroke-width='1'/></svg>">
 <style>
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { margin: 0; height: 100%; }
   body { font-family: Arial, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; font-size: 13px; color: #202124;
          background: #f9fbfd; display: flex; flex-direction: column; overflow: hidden; }
@@ -27,6 +28,22 @@
   .right { display: flex; align-items: center; gap: 12px; }
   .share { background: #c2e7ff; border: none; border-radius: 20px; padding: 9px 18px; font-size: 14px; font-weight: 500; color: #001d35; display: flex; gap: 6px; align-items: center; }
   .share:hover { background: #b3d7ef; }
+  .people { display: flex; align-items: center; cursor: pointer; padding: 2px; border-radius: 20px; }
+  .people:hover { background: #e8eaed; }
+  .people .p { width: 28px; height: 28px; border-radius: 50%; color: #fff; font-weight: bold; font-size: 12px;
+               display: flex; align-items: center; justify-content: center; border: 2px solid #f9fbfd; margin-left: -6px; }
+  .people .p:first-child { margin-left: 0; }
+  .people .more { background: #e8eaed; color: #444746; }
+  .ppl-menu { position: absolute; top: 46px; right: 60px; background: #fff; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.25);
+              padding: 8px 0; min-width: 220px; max-height: 60vh; overflow: auto; z-index: 5; }
+  .ppl-menu h4 { margin: 8px 16px 4px; font-size: 12px; font-weight: 500; color: #5f6368; }
+  .ppl-menu .row { display: flex; align-items: center; gap: 10px; padding: 6px 16px; font-size: 14px; }
+  .ppl-menu .row .p { width: 24px; height: 24px; border-radius: 50%; color: #fff; font-size: 11px; font-weight: bold;
+                      display: flex; align-items: center; justify-content: center; flex: none; }
+  .ppl-menu .row.off { color: #80868b; }
+  .ppl-menu .row.off .p { opacity: .45; }
+  .ppl-menu .empty { padding: 6px 16px; color: #80868b; font-size: 13px; }
+  .right { position: relative; }
   .avatar { width: 32px; height: 32px; border-radius: 50%; color: #fff; border: none; font-weight: bold; font-size: 14px; }
 
   .toolbar { margin: 8px 16px 6px; background: #edf2fa; border-radius: 24px; display: flex; align-items: center;
@@ -111,6 +128,8 @@
   <div class="right">
     <span class="ico" title="버전 기록">⟲</span>
     <span class="ico">💬</span>
+    <div class="people" id="people" title="이 시트를 보고 있는 사람"></div>
+    <div class="ppl-menu" id="pplMenu" hidden></div>
     <button class="share" id="shareBtn">🔒 공유</button>
     <button class="avatar" id="avatar" title="이름 변경">?</button>
   </div>
@@ -143,6 +162,7 @@
     <div class="swatches" id="swatches"></div>
     <label class="check"><input type="checkbox" id="notifyInput"> 새 메시지 알림 받기</label>
     <div class="hint">알림에는 메시지 내용 없이 "새로운 수정 사항"이라고만 표시돼요.</div>
+    <div class="hint" id="storageHint"></div>
     <div class="actions"><button class="btn primary" id="nameOk">확인</button></div>
   </div>
 </div>
@@ -226,6 +246,7 @@ $('nameOk').onclick = () => {
   me = { name, color: pickedColor || hashColor(name) };
   store.set('me', me);
   setNotify($('notifyInput').checked);
+  socket.emit('hello', { ...me, cid });
   $('nameDlg').classList.remove('open');
   renderAvatar();
   $('input').focus();
@@ -258,6 +279,8 @@ async function createRoom() {
 function open(id) {
   current = id;
   delete unread[id];
+  socket.emit('view', id);
+  renderPeople();
   history.replaceState(null, '', '/d/' + id);
   $('title').value = rooms.find((r) => r.id === id)?.title || '';
   updateBadge();
@@ -531,6 +554,70 @@ $('shareCopy').onclick = async () => {
   toast('링크가 복사되었습니다');
 };
 
+// ---------- 함께 보는 사람 ----------
+const presence = {};                       // roomId -> [{ name, color, cid }]
+socket.on('presence', ({ roomId, users }) => {
+  presence[roomId] = users;
+  if (roomId === current) renderPeople();
+});
+function personDot(u, cls = 'p') {
+  const d = document.createElement('div');
+  d.className = cls;
+  d.style.background = u.color;
+  d.textContent = u.name[0].toUpperCase();
+  d.title = u.name;
+  return d;
+}
+function renderPeople() {
+  // 위쪽에는 나를 뺀 사람만 (구글 시트의 공동 작업자 아이콘처럼)
+  const others = (presence[current] || []).filter((u) => u.cid !== cid);
+  const el = $('people');
+  el.innerHTML = '';
+  others.slice(0, 4).forEach((u) => el.appendChild(personDot(u)));
+  if (others.length > 4) {
+    const more = document.createElement('div');
+    more.className = 'p more'; more.textContent = '+' + (others.length - 4);
+    el.appendChild(more);
+  }
+  el.hidden = !others.length;
+  if (!$('pplMenu').hidden) renderPeopleMenu();
+}
+function renderPeopleMenu() {
+  const menu = $('pplMenu');
+  menu.innerHTML = '';
+  const online = presence[current] || [];
+  const row = (u, off, label) => {
+    const r = document.createElement('div');
+    r.className = 'row' + (off ? ' off' : '');
+    r.appendChild(personDot(u));
+    const n = document.createElement('span');
+    n.textContent = u.name + (label || '');
+    r.appendChild(n);
+    menu.appendChild(r);
+  };
+  const h1 = document.createElement('h4'); h1.textContent = `지금 보는 중 (${online.length})`; menu.appendChild(h1);
+  online.forEach((u) => row(u, false, u.cid === cid ? ' (나)' : ''));
+  // 대화에 참여했지만 지금은 없는 사람
+  const onlineIds = new Set(online.map((u) => u.cid));
+  const past = new Map();
+  for (const m of messages[current] || []) if (m.cid && !onlineIds.has(m.cid)) past.set(m.cid, m);
+  const h2 = document.createElement('h4'); h2.textContent = `참여했던 사람 (${past.size})`; menu.appendChild(h2);
+  if (!past.size) { const e = document.createElement('div'); e.className = 'empty'; e.textContent = '없음'; menu.appendChild(e); }
+  past.forEach((m) => row(m, true));
+}
+$('people').onclick = (e) => {
+  e.stopPropagation();
+  $('pplMenu').hidden = !$('pplMenu').hidden;
+  if (!$('pplMenu').hidden) renderPeopleMenu();
+};
+document.addEventListener('click', (e) => { if (!$('pplMenu').contains(e.target)) $('pplMenu').hidden = true; });
+
+fetch('/api/status').then((r) => r.json()).then(({ persistent }) => {
+  $('storageHint').textContent = persistent
+    ? '대화 저장: 데이터베이스 (서버가 재시작돼도 남아요)'
+    : '대화 저장: 임시 (서버가 잠들거나 재시작되면 지워져요)';
+}).catch(() => {});
+
 // ---------- 시작 ----------
 async function boot() {
   renderAvatar();
@@ -547,7 +634,15 @@ async function boot() {
   if (!me) openNameDlg(); else $('input').focus();
 }
 // 재연결 시 방에 다시 들어가기
-socket.on('connect', () => { if (current) rooms.forEach((r) => socket.emit('join', r.id, (res) => { if (!res.error) { messages[r.id] = res.messages; if (r.id === current) renderGrid(false); } })); });
+socket.on('connect', () => {
+  if (me) socket.emit('hello', { ...me, cid });
+  if (!current) return;
+  rooms.forEach((r) => socket.emit('join', r.id, (res) => {
+    if (res.error) return;
+    messages[r.id] = res.messages;
+    if (r.id === current) { renderGrid(false); socket.emit('view', current); }
+  }));
+});
 boot();
 </script>
 </body>

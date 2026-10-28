@@ -121,6 +121,9 @@ app.get('/api/rooms/:id', route(async (req, res) => {
   res.json(room);
 }));
 
+// 대화가 서버 재시작 후에도 남는지 (DATABASE_URL 연결 여부)
+app.get('/api/status', (req, res) => res.json({ persistent: !!process.env.DATABASE_URL }));
+
 // 초대 링크: /d/<roomId>
 app.get('/d/:id', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
@@ -131,7 +134,36 @@ const io = new Server(server);
 // 소켓 핸들러에서 DB 오류가 나도 서버가 죽지 않게
 const safe = (fn) => (...args) => fn(...args).catch((e) => console.error(e));
 
+// 지금 이 방을 보고 있는 사람 목록 (같은 브라우저의 여러 탭은 한 명으로)
+function broadcastPresence(roomId) {
+  if (!roomId) return;
+  const users = new Map();
+  for (const sid of io.sockets.adapter.rooms.get(roomId) || []) {
+    const d = io.sockets.sockets.get(sid)?.data;
+    if (d?.user && d.viewing === roomId) users.set(d.user.cid, d.user);
+  }
+  io.to(roomId).emit('presence', { roomId, users: [...users.values()] });
+}
+
 io.on('connection', (socket) => {
+  socket.on('hello', ({ name, color, cid } = {}) => {
+    name = clean(name, MAX_NAME);
+    cid = clean(cid, 32);
+    if (!name || !cid) return;
+    color = /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#1a73e8';
+    socket.data.user = { name, color, cid };
+    broadcastPresence(socket.data.viewing);
+  });
+
+  socket.on('view', (roomId) => {
+    const prev = socket.data.viewing;
+    socket.data.viewing = socket.rooms.has(roomId) ? roomId : null;
+    if (prev !== socket.data.viewing) broadcastPresence(prev);
+    broadcastPresence(socket.data.viewing);
+  });
+
+  socket.on('disconnect', () => broadcastPresence(socket.data.viewing));
+
   socket.on('join', safe(async (roomId, ack) => {
     const room = await store.getRoom(String(roomId));
     if (!room) return ack?.({ error: 'not found' });
@@ -139,7 +171,11 @@ io.on('connection', (socket) => {
     ack?.({ title: room.title, ttl: room.ttl, messages: await store.messages(room.id) });
   }));
 
-  socket.on('leave', (roomId) => socket.leave(roomId));
+  socket.on('leave', (roomId) => {
+    socket.leave(roomId);
+    if (socket.data.viewing === roomId) socket.data.viewing = null;
+    broadcastPresence(roomId);
+  });
 
   socket.on('message', safe(async ({ roomId, name, color, text, cid } = {}) => {
     text = clean(text, MAX_TEXT);
