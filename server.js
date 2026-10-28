@@ -12,6 +12,9 @@ const MAX_NAME = 20;
 // 방마다 고를 수 있는 메시지 보관 기간 (시간). 0 = 계속 보관
 const TTL_CHOICES = [48, 168, 720, 0];
 const DEFAULT_TTL = 48;
+// 사이트 기본 주소로 들어오면 모두 이 방에 모임
+const MAIN_ROOM = 'main';
+const MAIN_TITLE = '제목 없는 스프레드시트';
 
 const newId = () => crypto.randomBytes(9).toString('base64url');
 const clean = (s, max) => String(s ?? '').trim().slice(0, max);
@@ -29,7 +32,12 @@ function fileStore() {
   };
   const info = (r) => r && { id: r.id, title: r.title, ttl: r.ttl ?? DEFAULT_TTL };
   return {
-    async init() {},
+    async init() {
+      if (!db.rooms[MAIN_ROOM]) {
+        db.rooms[MAIN_ROOM] = { id: MAIN_ROOM, title: MAIN_TITLE, ttl: DEFAULT_TTL, createdAt: Date.now(), messages: [] };
+        save();
+      }
+    },
     async createRoom(title) {
       const id = newId();
       db.rooms[id] = { id, title, ttl: DEFAULT_TTL, createdAt: Date.now(), messages: [] };
@@ -68,6 +76,8 @@ function pgStore(url) {
         id TEXT PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
         name TEXT NOT NULL, color TEXT NOT NULL, text TEXT NOT NULL, cid TEXT, ts BIGINT NOT NULL)`);
       await q('CREATE INDEX IF NOT EXISTS messages_room_ts ON messages (room_id, ts)');
+      await q('INSERT INTO rooms (id, title, created_at) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING',
+        [MAIN_ROOM, MAIN_TITLE, Date.now()]);
     },
     async createRoom(title) {
       const id = newId();

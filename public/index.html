@@ -281,7 +281,7 @@ function open(id) {
   delete unread[id];
   socket.emit('view', id);
   renderPeople();
-  history.replaceState(null, '', '/d/' + id);
+  history.replaceState(null, '', id === 'main' ? '/' : '/d/' + id);
   $('title').value = rooms.find((r) => r.id === id)?.title || '';
   updateBadge();
   renderTabs();
@@ -530,7 +530,7 @@ document.addEventListener('keydown', (e) => {
 function toast(t) { const el = $('toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(el._t); el._t = setTimeout(() => el.style.display = 'none', 2500); }
 $('shareBtn').onclick = () => {
   $('shareTitle').textContent = $('title').value;
-  $('shareLink').value = location.origin + '/d/' + current;
+  $('shareLink').value = location.origin + (current === 'main' ? '/' : '/d/' + current);
   $('ttlSelect').value = String(rooms.find((r) => r.id === current)?.ttl ?? 48);
   $('shareDlg').classList.add('open');
   $('shareLink').select();
@@ -621,16 +621,18 @@ fetch('/api/status').then((r) => r.json()).then(({ persistent }) => {
 // ---------- 시작 ----------
 async function boot() {
   renderAvatar();
+  // 기본 주소(/)로 들어오면 모두 같은 'main' 시트로, /d/<id> 링크면 그 시트로
   const m = location.pathname.match(/^\/d\/([\w-]+)/);
-  const invited = m?.[1];
+  const target = m?.[1] || 'main';
   for (const r of [...rooms]) if (!(await join(r.id))) rooms = rooms.filter((x) => x.id !== r.id);
-  saveRooms();
-  if (invited && !rooms.find((r) => r.id === invited)) {
-    if (!(await join(invited))) toast('시트를 찾을 수 없습니다');
+  if (!rooms.find((r) => r.id === target) && !(await join(target))) {
+    toast('시트를 찾을 수 없어 기본 시트로 이동했어요');
+    await join('main');
   }
-  if (invited && rooms.find((r) => r.id === invited)) open(invited);
-  else if (rooms.length) open(rooms[0].id);
-  else await createRoom();
+  // 'main'은 항상 첫 번째 탭
+  rooms.sort((a, b) => (b.id === 'main') - (a.id === 'main'));
+  saveRooms();
+  open(rooms.find((r) => r.id === target) ? target : 'main');
   if (!me) openNameDlg(); else $('input').focus();
 }
 // 재연결 시 방에 다시 들어가기
