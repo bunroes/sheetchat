@@ -81,6 +81,8 @@
   .btn { border: none; border-radius: 20px; padding: 9px 20px; background: none; color: #0b57d0; font-weight: 500; }
   .btn.primary { background: #0b57d0; color: #fff; }
   .check { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+  .field { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; font-size: 14px; }
+  .field select { font: inherit; padding: 6px 8px; border: 1px solid #747775; border-radius: 4px; background: #fff; }
   .hint { color: #5f6368; font-size: 12px; margin-top: 8px; }
 
   .toast { position: fixed; left: 24px; bottom: 56px; background: #323232; color: #fff; padding: 12px 18px; border-radius: 4px; display: none; z-index: 20; }
@@ -151,6 +153,15 @@
     <h2>'<span id="shareTitle"></span>' 공유</h2>
     <input type="text" id="shareLink" readonly>
     <div class="hint">링크가 있는 사람은 누구나 이 시트에 참여할 수 있습니다.</div>
+    <label class="field">메시지 보관 기간
+      <select id="ttlSelect">
+        <option value="48">48시간</option>
+        <option value="168">7일</option>
+        <option value="720">30일</option>
+        <option value="0">계속 보관</option>
+      </select>
+    </label>
+    <div class="hint">이 시트에 있는 모든 사람에게 똑같이 적용돼요.</div>
     <div class="actions">
       <button class="btn" id="shareClose">완료</button>
       <button class="btn primary" id="shareCopy">링크 복사</button>
@@ -232,7 +243,7 @@ function join(id) {
     if (r.error) return res(null);
     messages[id] = r.messages;
     const room = rooms.find((x) => x.id === id);
-    if (room) room.title = r.title; else rooms.push({ id, title: r.title });
+    if (room) Object.assign(room, { title: r.title, ttl: r.ttl }); else rooms.push({ id, title: r.title, ttl: r.ttl });
     saveRooms();
     res(r);
   }));
@@ -476,8 +487,12 @@ function showNotification(roomId) {
 
 // 48시간 지난 메시지는 화면에서도 제거
 setInterval(() => {
-  const cutoff = Date.now() - 48 * 3600 * 1000;
-  for (const id in messages) messages[id] = messages[id].filter((m) => m.ts > cutoff);
+  for (const id in messages) {
+    const ttl = rooms.find((r) => r.id === id)?.ttl ?? 48;
+    if (!ttl) continue;
+    const cutoff = Date.now() - ttl * 3600 * 1000;
+    messages[id] = messages[id].filter((m) => m.ts > cutoff);
+  }
   if (!hidden) renderGrid(false);
 }, 60 * 1000);
 
@@ -493,10 +508,22 @@ function toast(t) { const el = $('toast'); el.textContent = t; el.style.display 
 $('shareBtn').onclick = () => {
   $('shareTitle').textContent = $('title').value;
   $('shareLink').value = location.origin + '/d/' + current;
+  $('ttlSelect').value = String(rooms.find((r) => r.id === current)?.ttl ?? 48);
   $('shareDlg').classList.add('open');
   $('shareLink').select();
 };
 $('shareClose').onclick = () => $('shareDlg').classList.remove('open');
+$('ttlSelect').addEventListener('change', () => {
+  socket.emit('ttl', { roomId: current, ttl: Number($('ttlSelect').value) });
+});
+const TTL_LABEL = { 48: '48시간', 168: '7일', 720: '30일', 0: '계속' };
+socket.on('ttl', ({ roomId, ttl }) => {
+  const r = rooms.find((x) => x.id === roomId);
+  if (!r) return;
+  r.ttl = ttl;
+  saveRooms();
+  if (roomId === current) toast(`메시지 보관 기간: ${TTL_LABEL[ttl]}`);
+});
 $('shareCopy').onclick = async () => {
   try { await navigator.clipboard.writeText($('shareLink').value); }
   catch { $('shareLink').select(); document.execCommand('copy'); }
