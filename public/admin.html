@@ -26,6 +26,17 @@
   td.names { white-space: normal; min-width: 160px; max-width: 320px; }
   td.row { background: #f8f9fa; color: #444746; text-align: center; width: 46px; font-size: 11px; }
   .sum { padding: 10px 16px; color: #5f6368; }
+  h2 { font-size: 16px; font-weight: normal; margin: 24px 16px 8px; }
+  .note-row { display: flex; gap: 8px; align-items: center; padding: 0 16px 10px; }
+  .note-row input { flex: 1; width: auto; }
+  table.edit td { padding: 0; }
+  table.edit td input { border: none; border-radius: 0; width: 100%; padding: 4px 8px; height: 26px; }
+  table.edit td input:focus { outline: 2px solid #1a73e8; outline-offset: -2px; }
+  table.edit td.del { width: 36px; text-align: center; }
+  .icon { background: none; color: #5f6368; padding: 2px 8px; border-radius: 4px; }
+  .icon:hover { background: #e8eaed; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px 32px; }
+  .ghost { background: none; color: #0b57d0; border: 1px solid #c7c7c7; }
 </style>
 </head>
 <body>
@@ -45,6 +56,24 @@
   </table>
 </div>
 <div class="sum" id="sum"></div>
+
+<section id="guideEdit" hidden>
+  <h2>사용법 탭 수정</h2>
+  <div class="note-row"><input id="gNote" maxlength="200" placeholder="맨 위 안내 문구"></div>
+  <div class="wrap">
+    <table class="edit">
+      <colgroup><col style="width:46px"><col style="width:90px"><col style="width:150px"><col><col style="width:260px"><col style="width:40px"></colgroup>
+      <thead><tr><th></th><th>구분</th><th>기능</th><th>사용 방법</th><th>비고</th><th></th></tr></thead>
+      <tbody id="gRows"></tbody>
+    </table>
+  </div>
+  <div class="actions">
+    <button type="button" class="ghost" id="gAdd">+ 줄 추가</button>
+    <button type="button" class="ghost" id="gReset">기본 내용으로 되돌리기</button>
+    <button type="button" id="gSave">저장</button>
+  </div>
+</section>
+<script src="/guide.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const TTL_LABEL = { 48: '48시간', 168: '7일', 720: '30일', 0: '계속' };
@@ -84,7 +113,62 @@ async function load(key) {
   $('wrap').hidden = false;
   const total = body.rooms.reduce((a, r) => a + r.messageCount, 0);
   $('sum').textContent = `시트 ${body.rooms.length}개 · 메시지 ${total}개`;
+  loadGuide();
 }
+
+// ---------- 사용법 수정 ----------
+function guideRow(vals = ['', '', '', '']) {
+  const tr = document.createElement('tr');
+  const num = document.createElement('td'); num.className = 'row'; tr.appendChild(num);
+  vals.forEach((v) => {
+    const td = document.createElement('td');
+    const input = document.createElement('input');
+    input.maxLength = 200;
+    input.value = v;
+    td.appendChild(input);
+    tr.appendChild(td);
+  });
+  const del = document.createElement('td'); del.className = 'del';
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'icon'; btn.textContent = '✕'; btn.title = '줄 삭제';
+  btn.onclick = () => { tr.remove(); numberRows(); };
+  del.appendChild(btn); tr.appendChild(del);
+  return tr;
+}
+function numberRows() {
+  [...$('gRows').children].forEach((tr, i) => { tr.firstChild.textContent = i + 1; });
+}
+function fillGuide(g) {
+  $('gNote').value = g.note;
+  $('gRows').innerHTML = '';
+  g.rows.forEach((r) => $('gRows').appendChild(guideRow(r)));
+  numberRows();
+}
+async function loadGuide() {
+  const saved = await fetch('/api/guide').then((r) => r.json()).catch(() => null);
+  fillGuide(saved || window.DEFAULT_GUIDE);
+  $('guideEdit').hidden = false;
+}
+async function saveGuide(body, done) {
+  const res = await fetch('/api/admin/guide', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'x-admin-key': getKey() },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return alert('저장하지 못했어요. 관리자 키를 다시 입력해 주세요.');
+  const g = await res.json();
+  fillGuide(g || window.DEFAULT_GUIDE);
+  $('gSave').textContent = done;
+  setTimeout(() => { $('gSave').textContent = '저장'; }, 1500);
+}
+$('gAdd').onclick = () => { $('gRows').appendChild(guideRow()); numberRows(); };
+$('gSave').onclick = () => saveGuide({
+  note: $('gNote').value,
+  rows: [...$('gRows').children]
+    .map((tr) => [...tr.querySelectorAll('input')].map((i) => i.value))
+    .filter((r) => r.some((v) => v.trim())),
+}, '저장됨');
+$('gReset').onclick = () => saveGuide({ reset: true }, '되돌림');
 $('form').addEventListener('submit', (e) => {
   e.preventDefault();
   const k = $('key').value.trim();

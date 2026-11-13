@@ -198,6 +198,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="/socket.io/socket.io.js"></script>
+<script src="/guide.js"></script>
 <script>
 const COLORS = ['#d93025','#1a73e8','#188038','#e37400','#a142f4','#007b83','#c5221f','#b06000','#9334e6','#1967d2','#d01884','#5f6368'];
 const COLS = 'ABCDEFGHIJKLMN'.split('');
@@ -362,21 +363,8 @@ function cell(text, cls, color) {
 }
 // 첫 번째 탭: 사용법 (서버에 없는, 화면에서만 보이는 시트)
 const GUIDE = 'guide';
-const GUIDE_ROWS = [
-  ['시작', '이름·색 정하기', '오른쪽 위 내 동그라미 클릭 → 이름 입력, 색 선택', '처음 들어오면 자동으로 뜸'],
-  ['채팅', '메시지 보내기', '위쪽 fx 칸에 입력하고 Enter', '이름이 위 줄, 내용이 아래 줄'],
-  ['채팅', '채팅방 이동', '아래쪽 시트 탭 클릭', '사용법 다음 탭이 모두가 모이는 기본 방'],
-  ['방', '새 방 만들기', '아래쪽 + 버튼', ''],
-  ['방', '방 이름 바꾸기', '왼쪽 위 문서 제목을 클릭해서 수정', '방에 있는 모두에게 바뀜'],
-  ['방', '친구 초대', '공유 → 링크 복사 → 친구에게 보내기', '기본 방은 사이트 주소만 보내도 됨'],
-  ['방', '공유해서 쓰기', '사이트 주소나 방 링크를 친구들에게 자유롭게 공유', '공유해서 사용해도 괜찮아요'],
-  ['방', '목록에서 빼기', '탭에 마우스 올리고 ✕', '링크로 다시 들어올 수 있음'],
-  ['사람', '누가 있는지 보기', '공유 버튼 왼쪽 동그라미 아이콘 클릭', '지금 보는 사람 / 참여했던 사람'],
-  ['알림', '새 메시지 표시', '시트 탭에 빨간 숫자, 브라우저 탭 제목에 (숫자)', '자동'],
-  ['알림', '알림 받기', '내 동그라미 → "새 메시지 알림 받기" 체크', '내용 없이 "새로운 수정 사항"만 표시'],
-  ['보관', '보관 기간 정하기', '공유 창에서 48시간 / 7일 / 30일 / 계속 보관', '방마다 따로'],
-  ['위장', '화면 숨기기', 'Esc 키 (PC)', '영단어장으로 바뀜, 다시 누르면 돌아옴'],
-];
+// 서버에 저장된 내용이 있으면 boot()에서 바뀜
+let guide = window.DEFAULT_GUIDE;
 function guideRows() {
   const spans = [1, 2, 5, 2];
   const row = (vals, cls) => vals.map((v, j) => {
@@ -386,10 +374,10 @@ function guideRows() {
   });
   return [
     [Object.assign(cell('사용법', 'gtitle'), { colSpan: 10 })],
-    [Object.assign(cell('친구들이랑 자유롭게 사용해도 괜찮아용 링크만 보내면 바로 쓸 수 있어요!', 'gnote'), { colSpan: 10 })],
+    [Object.assign(cell(guide.note, 'gnote'), { colSpan: 10 })],
     [],
     row(['구분', '기능', '사용 방법', '비고'], 'ghead'),
-    ...GUIDE_ROWS.map((r) => row(r, (j) => ['gsec', '', '', 'gnote'][j])),
+    ...guide.rows.map((r) => row(r, (j) => ['gsec', '', '', 'gnote'][j])),
     [],
     // 표 오른쪽 아래 구석에 작게
     [...Array.from({ length: 9 }, () => cell('')), cell('sj', 'gsign')],
@@ -679,9 +667,19 @@ fetch('/api/status').then((r) => r.json()).then(({ persistent }) => {
     : '대화 저장: 임시 (서버가 잠들거나 재시작되면 지워져요)';
 }).catch(() => {});
 
+// 관리자가 사용법을 고치면 바로 반영
+socket.on('guide', (g) => {
+  guide = g || window.DEFAULT_GUIDE;
+  if (current === GUIDE && !hidden) renderGrid(false);
+});
+
 // ---------- 시작 ----------
 async function boot() {
   renderAvatar();
+  try {
+    const saved = await fetch('/api/guide').then((r) => r.json());
+    if (saved) guide = saved;
+  } catch {}
   // 기본 주소(/)로 들어오면 모두 같은 'main' 시트로, /d/<id> 링크면 그 시트로
   const m = location.pathname.match(/^\/d\/([\w-]+)/);
   const target = m?.[1] || 'main';

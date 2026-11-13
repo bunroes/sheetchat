@@ -52,6 +52,8 @@ function fileStore() {
     },
     async addMessage(roomId, msg) { db.rooms[roomId].messages.push(msg); save(); },
     async updateRoom(id, fields) { Object.assign(db.rooms[id], fields); save(); },
+    async getSetting(key) { return db.settings?.[key] ?? null; },
+    async setSetting(key, value) { (db.settings ||= {})[key] = value; save(); },
     async listRooms() {
       return Object.values(db.rooms).map((r) => ({
         id: r.id,
@@ -87,6 +89,7 @@ function pgStore(url) {
         id TEXT PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
         name TEXT NOT NULL, color TEXT NOT NULL, text TEXT NOT NULL, cid TEXT, ts BIGINT NOT NULL)`);
       await q('CREATE INDEX IF NOT EXISTS messages_room_ts ON messages (room_id, ts)');
+      await q('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value JSONB NOT NULL)');
       await q('INSERT INTO rooms (id, title, created_at) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING',
         [MAIN_ROOM, MAIN_TITLE, Date.now()]);
     },
@@ -113,6 +116,14 @@ function pgStore(url) {
     async updateRoom(id, { title, ttl }) {
       if (title !== undefined) await q('UPDATE rooms SET title = $2 WHERE id = $1', [id, title]);
       if (ttl !== undefined) await q('UPDATE rooms SET ttl = $2 WHERE id = $1', [id, ttl]);
+    },
+    async getSetting(key) {
+      const { rows } = await q('SELECT value FROM settings WHERE key = $1', [key]);
+      return rows[0]?.value ?? null;
+    },
+    async setSetting(key, value) {
+      await q(`INSERT INTO settings (key, value) VALUES ($1, $2)
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [key, JSON.stringify(value)]);
     },
     async listRooms() {
       const { rows } = await q(`SELECT r.id, r.title, r.ttl, r.created_at, COUNT(m.id)::int AS n, MAX(m.ts) AS last_at,
@@ -165,6 +176,25 @@ app.get('/api/admin/rooms', route(async (req, res) => {
   const rooms = (await store.listRooms()).map(({ id, ...r }) => ({ ...r, online: viewers(id).map((u) => u.name) }));
   rooms.sort((a, b) => (b.lastAt ?? b.createdAt) - (a.lastAt ?? a.createdAt));
   res.json({ rooms });
+}));
+
+// 사용법 탭 내용: 누구나 읽고, 관리자만 고침. 저장된 게 없으면 null (화면은 기본 내용 사용)
+app.get('/api/guide', route(async (req, res) => res.json(await store.getSetting('guide'))));
+app.put('/api/admin/guide', route(async (req, res) => {
+  if (!isAdmin(req)) return res.status(401).json({ error: '키가 맞지 않아요' });
+  if (req.body?.reset) {
+    await store.setSetting('guide', null);
+    io.emit('guide', null);
+    return res.json(null);
+  }
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows.slice(0, 50) : [];
+  const guide = {
+    note: clean(req.body?.note, 200),
+    rows: rows.map((r) => [0, 1, 2, 3].map((i) => clean(Array.isArray(r) ? r[i] : '', 200))),
+  };
+  await store.setSetting('guide', guide);
+  io.emit('guide', guide);
+  res.json(guide);
 }));
 
 app.get('/api/status', (req, res) => res.json({ persistent: !!process.env.DATABASE_URL }));
