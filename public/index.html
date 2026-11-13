@@ -72,6 +72,11 @@
   td.msg { white-space: pre-wrap; word-break: break-word; vertical-align: top; }
   td.time { color: #80868b; font-size: 12px; text-align: right; }
   td.num { text-align: right; }
+  td.ghead { background: #f1f3f4; font-weight: bold; }
+  td.gtitle { font-weight: bold; font-size: 15px; }
+  td.gsec { font-weight: bold; color: #188038; }
+  td.gnote { color: #5f6368; }
+  .tab.guide::before { content: "📋"; }
 
   /* 하단 시트 탭 = 채팅방 */
   .tabs { display: flex; align-items: center; background: #f9fbfd; border-top: 1px solid #e1e3e1; height: 40px; padding: 0 8px; gap: 4px; overflow-x: auto; }
@@ -281,8 +286,9 @@ function open(id) {
   delete unread[id];
   socket.emit('view', id);
   renderPeople();
-  history.replaceState(null, '', id === 'main' ? '/' : '/d/' + id);
-  $('title').value = rooms.find((r) => r.id === id)?.title || '';
+  if (id !== GUIDE) history.replaceState(null, '', id === 'main' ? '/' : '/d/' + id);
+  $('title').value = id === GUIDE ? '사용법' : rooms.find((r) => r.id === id)?.title || '';
+  $('title').readOnly = id === GUIDE;
   updateBadge();
   renderTabs();
   renderGrid(true);
@@ -303,6 +309,11 @@ function renderTabs() {
   const all = document.createElement('button');
   all.className = 'tbtn'; all.textContent = '≡'; all.title = '모든 시트';
   el.append(add, all);
+  const g = document.createElement('div');
+  g.className = 'tab guide' + (current === GUIDE ? ' active' : '');
+  g.textContent = '사용법';
+  g.onclick = () => open(GUIDE);
+  el.appendChild(g);
   for (const r of rooms) {
     const t = document.createElement('div');
     t.className = 'tab' + (r.id === current ? ' active' : '') + (unread[r.id] ? ' unread' : '');
@@ -325,7 +336,7 @@ function renderTabs() {
 $('title').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
 $('title').addEventListener('change', () => {
   const title = $('title').value.trim();
-  if (title && current) socket.emit('rename', { roomId: current, title });
+  if (title && current && current !== GUIDE) socket.emit('rename', { roomId: current, title });
 });
 socket.on('renamed', ({ roomId, title }) => {
   const r = rooms.find((x) => x.id === roomId);
@@ -348,6 +359,39 @@ function cell(text, cls, color) {
   td.textContent = text ?? '';
   return td;
 }
+// 첫 번째 탭: 사용법 (서버에 없는, 화면에서만 보이는 시트)
+const GUIDE = 'guide';
+const GUIDE_ROWS = [
+  ['시작', '이름·색 정하기', '오른쪽 위 내 동그라미 클릭 → 이름 입력, 색 선택', '처음 들어오면 자동으로 뜸'],
+  ['채팅', '메시지 보내기', '위쪽 fx 칸에 입력하고 Enter', '이름이 위 줄, 내용이 아래 줄'],
+  ['채팅', '채팅방 이동', '아래쪽 시트 탭 클릭', '사용법 다음 탭이 모두가 모이는 기본 방'],
+  ['방', '새 방 만들기', '아래쪽 + 버튼', ''],
+  ['방', '방 이름 바꾸기', '왼쪽 위 문서 제목을 클릭해서 수정', '방에 있는 모두에게 바뀜'],
+  ['방', '친구 초대', '공유 → 링크 복사 → 친구에게 보내기', '기본 방은 사이트 주소만 보내도 됨'],
+  ['방', '공유해서 쓰기', '사이트 주소나 방 링크를 친구들에게 자유롭게 공유', '공유해서 사용해도 괜찮아요'],
+  ['방', '목록에서 빼기', '탭에 마우스 올리고 ✕', '링크로 다시 들어올 수 있음'],
+  ['사람', '누가 있는지 보기', '공유 버튼 왼쪽 동그라미 아이콘 클릭', '지금 보는 사람 / 참여했던 사람'],
+  ['알림', '새 메시지 표시', '시트 탭에 빨간 숫자, 브라우저 탭 제목에 (숫자)', '자동'],
+  ['알림', '알림 받기', '내 동그라미 → "새 메시지 알림 받기" 체크', '내용 없이 "새로운 수정 사항"만 표시'],
+  ['보관', '보관 기간 정하기', '공유 창에서 48시간 / 7일 / 30일 / 계속 보관', '방마다 따로'],
+  ['위장', '화면 숨기기', 'Esc 키 (PC)', '영단어장으로 바뀜, 다시 누르면 돌아옴'],
+];
+function guideRows() {
+  const spans = [1, 2, 5, 2];
+  const row = (vals, cls) => vals.map((v, j) => {
+    const td = cell(v, typeof cls === 'function' ? cls(j) : cls);
+    td.colSpan = spans[j];
+    return td;
+  });
+  return [
+    [Object.assign(cell('사용법', 'gtitle'), { colSpan: 10 })],
+    [Object.assign(cell('이 시트는 친구들과 자유롭게 공유해서 사용해도 괜찮아요. 링크만 보내면 누구나 함께 쓸 수 있어요.', 'gnote'), { colSpan: 10 })],
+    [],
+    row(['구분', '기능', '사용 방법', '비고'], 'ghead'),
+    ...GUIDE_ROWS.map((r) => row(r, (j) => ['gsec', '', '', 'gnote'][j])),
+  ];
+}
+
 // 위장 모드에서 보여줄 영단어장
 const VOCAB = [
   ['abandon', 'v.', '버리다, 포기하다', 'They had to abandon the car in the snow.'],
@@ -418,6 +462,8 @@ function renderGrid(scrollBottom) {
       if (i > 0 && j === 1) td.style.fontWeight = 'bold';
       return td;
     })));
+  } else if (current === GUIDE) {
+    guideRows().forEach(addRow);
   } else {
     for (const m of messages[current] || []) {
       const blank = () => cell('');
@@ -459,6 +505,7 @@ $('input').addEventListener('keydown', (e) => {
   if (e.key !== 'Enter' || e.isComposing) return;
   const text = $('input').value.trim();
   if (!text || !current) return;
+  if (current === GUIDE) return toast('채팅은 아래쪽 다른 시트 탭에서 할 수 있어요');
   if (!me) return openNameDlg();
   socket.emit('message', { roomId: current, name: me.name, color: me.color, text, cid });
   $('input').value = '';
@@ -482,7 +529,7 @@ const ICON = $('favicon').getAttribute('href');
 const ICON_DOT = ICON.replace('</svg>', "<circle cx='19' cy='5' r='5' fill='%23d93025'/></svg>");
 function updateBadge() {
   const n = Object.values(unread).reduce((a, b) => a + b, 0);
-  const t = rooms.find((r) => r.id === current)?.title || '';
+  const t = current === GUIDE ? '사용법' : rooms.find((r) => r.id === current)?.title || '';
   document.title = (n ? `(${n}) ` : '') + t + ' - 스프레드시트';
   $('favicon').href = n ? ICON_DOT : ICON;
 }
@@ -528,16 +575,19 @@ document.addEventListener('keydown', (e) => {
 
 // ---------- 공유 ----------
 function toast(t) { const el = $('toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(el._t); el._t = setTimeout(() => el.style.display = 'none', 2500); }
+// 사용법 탭에서 공유를 누르면 기본 방을 공유
+const shareRoom = () => (current === GUIDE ? 'main' : current);
 $('shareBtn').onclick = () => {
-  $('shareTitle').textContent = $('title').value;
-  $('shareLink').value = location.origin + (current === 'main' ? '/' : '/d/' + current);
-  $('ttlSelect').value = String(rooms.find((r) => r.id === current)?.ttl ?? 48);
+  const id = shareRoom();
+  $('shareTitle').textContent = rooms.find((r) => r.id === id)?.title || $('title').value;
+  $('shareLink').value = location.origin + (id === 'main' ? '/' : '/d/' + id);
+  $('ttlSelect').value = String(rooms.find((r) => r.id === id)?.ttl ?? 48);
   $('shareDlg').classList.add('open');
   $('shareLink').select();
 };
 $('shareClose').onclick = () => $('shareDlg').classList.remove('open');
 $('ttlSelect').addEventListener('change', () => {
-  socket.emit('ttl', { roomId: current, ttl: Number($('ttlSelect').value) });
+  socket.emit('ttl', { roomId: shareRoom(), ttl: Number($('ttlSelect').value) });
 });
 const TTL_LABEL = { 48: '48시간', 168: '7일', 720: '30일', 0: '계속' };
 socket.on('ttl', ({ roomId, ttl }) => {
@@ -545,7 +595,7 @@ socket.on('ttl', ({ roomId, ttl }) => {
   if (!r) return;
   r.ttl = ttl;
   saveRooms();
-  if (roomId === current) toast(`메시지 보관 기간: ${TTL_LABEL[ttl]}`);
+  if (roomId === shareRoom()) toast(`메시지 보관 기간: ${TTL_LABEL[ttl]}`);
 });
 $('shareCopy').onclick = async () => {
   try { await navigator.clipboard.writeText($('shareLink').value); }
@@ -632,7 +682,11 @@ async function boot() {
   // 'main'은 항상 첫 번째 탭
   rooms.sort((a, b) => (b.id === 'main') - (a.id === 'main'));
   saveRooms();
-  open(rooms.find((r) => r.id === target) ? target : 'main');
+  // 처음 온 사람은 사용법 탭부터 (초대 링크로 들어온 경우는 그 방부터)
+  const firstVisit = !store.get('guideSeen', false);
+  store.set('guideSeen', true);
+  if (firstVisit && !m) open(GUIDE);
+  else open(rooms.find((r) => r.id === target) ? target : 'main');
   if (!me) openNameDlg(); else $('input').focus();
 }
 // 재연결 시 방에 다시 들어가기
