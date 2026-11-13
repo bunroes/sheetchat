@@ -22,6 +22,8 @@
   th, td { border-right: 1px solid #e2e3e3; border-bottom: 1px solid #e2e3e3; padding: 4px 8px; height: 24px; text-align: left; white-space: nowrap; }
   th { background: #f1f3f4; font-weight: bold; }
   td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  td.on { color: #188038; font-weight: bold; }
+  td.names { white-space: normal; min-width: 160px; max-width: 320px; }
   td.row { background: #f8f9fa; color: #444746; text-align: center; width: 46px; font-size: 11px; }
   .sum { padding: 10px 16px; color: #5f6368; }
 </style>
@@ -38,7 +40,7 @@
 <div class="msg" id="msg" hidden></div>
 <div class="wrap" id="wrap" hidden>
   <table>
-    <thead><tr><th></th><th>시트 이름</th><th class="n">메시지 수</th><th>마지막 대화</th><th>만든 날</th><th>보관 기간</th></tr></thead>
+    <thead><tr><th></th><th>시트 이름</th><th>지금 접속</th><th>참여한 사람</th><th class="n">메시지 수</th><th>마지막 대화</th><th>만든 날</th><th>보관 기간</th></tr></thead>
     <tbody id="rows"></tbody>
   </table>
 </div>
@@ -70,7 +72,7 @@ async function load(key) {
   tbody.innerHTML = '';
   body.rooms.forEach((r, i) => {
     const tr = document.createElement('tr');
-    const cells = [[String(i + 1), 'row'], [r.title], [String(r.messageCount), 'n'], [fmt(r.lastAt)], [fmt(r.createdAt)], [TTL_LABEL[r.ttl] ?? r.ttl + '시간']];
+    const cells = [[String(i + 1), 'row'], [r.title], [r.online.join(', ') || '-', 'on'], [r.names.join(', ') || '-', 'names'], [String(r.messageCount), 'n'], [fmt(r.lastAt)], [fmt(r.createdAt)], [TTL_LABEL[r.ttl] ?? r.ttl + '시간']];
     for (const [v, cls] of cells) {
       const td = document.createElement('td');
       if (cls) td.className = cls;

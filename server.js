@@ -54,7 +54,9 @@ function fileStore() {
     async updateRoom(id, fields) { Object.assign(db.rooms[id], fields); save(); },
     async listRooms() {
       return Object.values(db.rooms).map((r) => ({
+        id: r.id,
         title: r.title,
+        names: [...new Set(r.messages.map((m) => m.name))],
         ttl: r.ttl ?? DEFAULT_TTL,
         createdAt: r.createdAt,
         messageCount: r.messages.length,
@@ -113,10 +115,11 @@ function pgStore(url) {
       if (ttl !== undefined) await q('UPDATE rooms SET ttl = $2 WHERE id = $1', [id, ttl]);
     },
     async listRooms() {
-      const { rows } = await q(`SELECT r.title, r.ttl, r.created_at, COUNT(m.id)::int AS n, MAX(m.ts) AS last_at
+      const { rows } = await q(`SELECT r.id, r.title, r.ttl, r.created_at, COUNT(m.id)::int AS n, MAX(m.ts) AS last_at,
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT m.name), NULL) AS names
         FROM rooms r LEFT JOIN messages m ON m.room_id = r.id GROUP BY r.id`);
       return rows.map((r) => ({
-        title: r.title, ttl: r.ttl, createdAt: Number(r.created_at),
+        id: r.id, title: r.title, names: r.names, ttl: r.ttl, createdAt: Number(r.created_at),
         messageCount: r.n, lastAt: r.last_at === null ? null : Number(r.last_at),
       }));
     },
@@ -161,7 +164,7 @@ app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'adm
 app.get('/api/admin/rooms', route(async (req, res) => {
   if (!ADMIN_KEY) return res.status(404).json({ error: 'ADMIN_KEY가 설정되지 않았어요' });
   if (!isAdmin(req)) return res.status(401).json({ error: '키가 맞지 않아요' });
-  const rooms = await store.listRooms();
+  const rooms = (await store.listRooms()).map(({ id, ...r }) => ({ ...r, online: viewers(id).map((u) => u.name) }));
   rooms.sort((a, b) => (b.lastAt ?? b.createdAt) - (a.lastAt ?? a.createdAt));
   res.json({ rooms });
 }));
@@ -179,14 +182,16 @@ const io = new Server(server);
 const safe = (fn) => (...args) => fn(...args).catch((e) => console.error(e));
 
 // 지금 이 방을 보고 있는 사람 목록 (같은 브라우저의 여러 탭은 한 명으로)
-function broadcastPresence(roomId) {
-  if (!roomId) return;
+function viewers(roomId) {
   const users = new Map();
   for (const sid of io.sockets.adapter.rooms.get(roomId) || []) {
     const d = io.sockets.sockets.get(sid)?.data;
     if (d?.user && d.viewing === roomId) users.set(d.user.cid, d.user);
   }
-  io.to(roomId).emit('presence', { roomId, users: [...users.values()] });
+  return [...users.values()];
+}
+function broadcastPresence(roomId) {
+  if (roomId) io.to(roomId).emit('presence', { roomId, users: viewers(roomId) });
 }
 
 io.on('connection', (socket) => {
