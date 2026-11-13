@@ -29,3 +29,8 @@ Render 무료 서버는 잠들거나 재시작할 때 파일이 초기화되므�
 무료 Postgres(예: [Neon](https://neon.tech))를 만들고 그 연결 주소를 Render 서비스의
 Environment에 `DATABASE_URL`로 넣으면, 대화가 데이터베이스에 저장되어 재시작해도 남습니다.
 `DATABASE_URL`이 없으면 예전처럼 `data.json`을 씁니다.
+
+### 관리자: 전체 시트 목록 보기
+Render 서비스의 Environment에 `ADMIN_KEY`(길고 아무도 모르는 문자열)를 넣고 `사이트주소/admin`에서 그 키를 입력하면
+지금까지 만들어진 모든 시트의 이름, 메시지 수, 마지막 대화 시각, 만든 날, 보관 기간을 볼 수 있습니다.
+메시지 내용과 방 링크는 보이지 않습니다. `ADMIN_KEY`가 없으면 이 기능은 꺼져 있습니다.

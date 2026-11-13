@@ -52,6 +52,15 @@ function fileStore() {
     },
     async addMessage(roomId, msg) { db.rooms[roomId].messages.push(msg); save(); },
     async updateRoom(id, fields) { Object.assign(db.rooms[id], fields); save(); },
+    async listRooms() {
+      return Object.values(db.rooms).map((r) => ({
+        title: r.title,
+        ttl: r.ttl ?? DEFAULT_TTL,
+        createdAt: r.createdAt,
+        messageCount: r.messages.length,
+        lastAt: r.messages.length ? r.messages[r.messages.length - 1].ts : null,
+      }));
+    },
     async prune() {
       for (const r of Object.values(db.rooms)) {
         const cutoff = cutoffFor(r.ttl ?? DEFAULT_TTL);
@@ -103,6 +112,14 @@ function pgStore(url) {
       if (title !== undefined) await q('UPDATE rooms SET title = $2 WHERE id = $1', [id, title]);
       if (ttl !== undefined) await q('UPDATE rooms SET ttl = $2 WHERE id = $1', [id, ttl]);
     },
+    async listRooms() {
+      const { rows } = await q(`SELECT r.title, r.ttl, r.created_at, COUNT(m.id)::int AS n, MAX(m.ts) AS last_at
+        FROM rooms r LEFT JOIN messages m ON m.room_id = r.id GROUP BY r.id`);
+      return rows.map((r) => ({
+        title: r.title, ttl: r.ttl, createdAt: Number(r.created_at),
+        messageCount: r.n, lastAt: r.last_at === null ? null : Number(r.last_at),
+      }));
+    },
     async prune() {
       await q(`DELETE FROM messages m USING rooms r
         WHERE m.room_id = r.id AND r.ttl > 0 AND m.ts < $1 - r.ttl::bigint * 3600000`, [Date.now()]);
@@ -132,6 +149,23 @@ app.get('/api/rooms/:id', route(async (req, res) => {
 }));
 
 // 대화가 서버 재시작 후에도 남는지 (DATABASE_URL 연결 여부)
+// 관리자용 방 목록: Render 환경 변수 ADMIN_KEY를 아는 사람만.
+// 방 링크(id)와 메시지 내용은 주지 않음
+const ADMIN_KEY = process.env.ADMIN_KEY || '';
+function isAdmin(req) {
+  const given = Buffer.from(String(req.get('x-admin-key') || ''));
+  const want = Buffer.from(ADMIN_KEY);
+  return ADMIN_KEY.length > 0 && given.length === want.length && crypto.timingSafeEqual(given, want);
+}
+app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
+app.get('/api/admin/rooms', route(async (req, res) => {
+  if (!ADMIN_KEY) return res.status(404).json({ error: 'ADMIN_KEY가 설정되지 않았어요' });
+  if (!isAdmin(req)) return res.status(401).json({ error: '키가 맞지 않아요' });
+  const rooms = await store.listRooms();
+  rooms.sort((a, b) => (b.lastAt ?? b.createdAt) - (a.lastAt ?? a.createdAt));
+  res.json({ rooms });
+}));
+
 app.get('/api/status', (req, res) => res.json({ persistent: !!process.env.DATABASE_URL }));
 
 // 초대 링크: /d/<roomId>

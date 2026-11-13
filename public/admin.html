@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>시트 목록 - 스프레드시트</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='3' y='1' width='18' height='22' rx='2' fill='%230f9d58'/><rect x='6' y='9' width='12' height='9' fill='white'/><path d='M6 12h12M6 15h12M11 9v9' stroke='%230f9d58' stroke-width='1'/></svg>">
+<style>
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; font-family: Arial, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; font-size: 13px; color: #202124; background: #f9fbfd; }
+  .top { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
+  .top svg { width: 24px; height: 32px; flex: none; }
+  .top h1 { margin: 0; font-size: 18px; font-weight: normal; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 16px 12px; color: #5f6368; }
+  input { font: inherit; padding: 7px 10px; border: 1px solid #747775; border-radius: 4px; width: 260px; max-width: 100%; }
+  button { font: inherit; border: none; border-radius: 20px; padding: 8px 18px; background: #0b57d0; color: #fff; cursor: pointer; }
+  .msg { padding: 0 16px 12px; color: #d93025; }
+  .wrap { overflow-x: auto; background: #fff; border-top: 1px solid #e1e3e1; }
+  table { border-collapse: collapse; min-width: 640px; width: 100%; }
+  th, td { border-right: 1px solid #e2e3e3; border-bottom: 1px solid #e2e3e3; padding: 4px 8px; height: 24px; text-align: left; white-space: nowrap; }
+  th { background: #f1f3f4; font-weight: bold; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  td.row { background: #f8f9fa; color: #444746; text-align: center; width: 46px; font-size: 11px; }
+  .sum { padding: 10px 16px; color: #5f6368; }
+</style>
+</head>
+<body>
+<div class="top">
+  <svg viewBox="0 0 24 32"><path d="M15 0H2.5A2.5 2.5 0 0 0 0 2.5v27A2.5 2.5 0 0 0 2.5 32h19a2.5 2.5 0 0 0 2.5-2.5V9z" fill="#0f9d58"/><path d="M15 0v6.5A2.5 2.5 0 0 0 17.5 9H24z" fill="#87ceac"/><rect x="5" y="13" width="14" height="11" fill="#fff"/><path d="M5 16.7h14M5 20.3h14M10 13v11" stroke="#0f9d58" stroke-width="1.2"/></svg>
+  <h1>시트 목록</h1>
+</div>
+<form class="bar" id="form">
+  <input type="password" id="key" placeholder="관리자 키" autocomplete="current-password">
+  <button type="submit">불러오기</button>
+</form>
+<div class="msg" id="msg" hidden></div>
+<div class="wrap" id="wrap" hidden>
+  <table>
+    <thead><tr><th></th><th>시트 이름</th><th class="n">메시지 수</th><th>마지막 대화</th><th>만든 날</th><th>보관 기간</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+<div class="sum" id="sum"></div>
+<script>
+const $ = (id) => document.getElementById(id);
+const TTL_LABEL = { 48: '48시간', 168: '7일', 720: '30일', 0: '계속' };
+const fmt = (ts) => {
+  if (!ts) return '-';
+  const d = new Date(ts), p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const getKey = () => { try { return sessionStorage.getItem('adminKey') || ''; } catch { return ''; } };
+const setKey = (k) => { try { sessionStorage.setItem('adminKey', k); } catch {} };
+
+async function load(key) {
+  $('msg').hidden = true;
+  const res = await fetch('/api/admin/rooms', { headers: { 'x-admin-key': key } });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    $('msg').textContent = body.error || '불러오지 못했어요';
+    $('msg').hidden = false;
+    $('wrap').hidden = true;
+    $('sum').textContent = '';
+    return;
+  }
+  setKey(key);
+  const tbody = $('rows');
+  tbody.innerHTML = '';
+  body.rooms.forEach((r, i) => {
+    const tr = document.createElement('tr');
+    const cells = [[String(i + 1), 'row'], [r.title], [String(r.messageCount), 'n'], [fmt(r.lastAt)], [fmt(r.createdAt)], [TTL_LABEL[r.ttl] ?? r.ttl + '시간']];
+    for (const [v, cls] of cells) {
+      const td = document.createElement('td');
+      if (cls) td.className = cls;
+      td.textContent = v;
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  });
+  $('wrap').hidden = false;
+  const total = body.rooms.reduce((a, r) => a + r.messageCount, 0);
+  $('sum').textContent = `시트 ${body.rooms.length}개 · 메시지 ${total}개`;
+}
+$('form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const k = $('key').value.trim();
+  if (k) load(k);
+});
+if (getKey()) load(getKey());
+</script>
+</body>
+</html>
