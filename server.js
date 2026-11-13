@@ -152,17 +152,15 @@ app.get('/api/rooms/:id', route(async (req, res) => {
 }));
 
 // 대화가 서버 재시작 후에도 남는지 (DATABASE_URL 연결 여부)
-// 관리자용 방 목록: Render 환경 변수 ADMIN_KEY를 아는 사람만.
-// 방 링크(id)와 메시지 내용은 주지 않음
-const ADMIN_KEY = process.env.ADMIN_KEY || '';
-function isAdmin(req) {
-  const given = Buffer.from(String(req.get('x-admin-key') || ''));
-  const want = Buffer.from(ADMIN_KEY);
-  return ADMIN_KEY.length > 0 && given.length === want.length && crypto.timingSafeEqual(given, want);
-}
+// 관리자용 방 목록: 관리자 키를 아는 사람만. 방 링크(id)와 메시지 내용은 주지 않음.
+// 저장소가 공개라서 키 자체 대신 해시만 코드에 둠 (Render의 ADMIN_KEY가 있으면 그게 우선)
+const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest();
+const ADMIN_KEY_HASH = process.env.ADMIN_KEY
+  ? sha256(process.env.ADMIN_KEY)
+  : Buffer.from('ef4356dcf3cc5716616ea5a1a7e0b764123937d453a112804366a7d24bf4356d', 'hex');
+const isAdmin = (req) => crypto.timingSafeEqual(sha256(req.get('x-admin-key') || ''), ADMIN_KEY_HASH);
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 app.get('/api/admin/rooms', route(async (req, res) => {
-  if (!ADMIN_KEY) return res.status(404).json({ error: 'ADMIN_KEY가 설정되지 않았어요' });
   if (!isAdmin(req)) return res.status(401).json({ error: '키가 맞지 않아요' });
   const rooms = (await store.listRooms()).map(({ id, ...r }) => ({ ...r, online: viewers(id).map((u) => u.name) }));
   rooms.sort((a, b) => (b.lastAt ?? b.createdAt) - (a.lastAt ?? a.createdAt));

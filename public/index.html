@@ -611,6 +611,13 @@ $('shareCopy').onclick = async () => {
 // ---------- 함께 보는 사람 ----------
 const presence = {};                       // roomId -> [{ name, color, cid }]
 socket.on('presence', ({ roomId, users }) => {
+  // 이미 보고 있던 방에 새로 들어온 사람이 있으면 알려줌 (처음 목록을 받을 때는 제외)
+  const before = presence[roomId];
+  if (before && roomId === current) {
+    const known = new Set(before.map((u) => u.cid));
+    const joined = users.filter((u) => !known.has(u.cid) && u.cid !== cid);
+    if (joined.length) toast(joined.map((u) => u.name).join(', ') + '님이 이 시트에 들어왔어요');
+  }
   presence[roomId] = users;
   if (roomId === current) renderPeople();
 });
