@@ -76,6 +76,7 @@
   td.gtitle { font-weight: bold; font-size: 15px; }
   td.gsec { font-weight: bold; color: #188038; }
   td.gnote { color: #5f6368; }
+  td.gsign { color: #9aa0a6; font-size: 11px; text-align: right; font-style: italic; }
   .tab.guide::before { content: "📋"; }
 
   /* 하단 시트 탭 = 채팅방 */
@@ -385,10 +386,13 @@ function guideRows() {
   });
   return [
     [Object.assign(cell('사용법', 'gtitle'), { colSpan: 10 })],
-    [Object.assign(cell('이 시트는 친구들과 자유롭게 공유해서 사용해도 괜찮아요. 링크만 보내면 누구나 함께 쓸 수 있어요.', 'gnote'), { colSpan: 10 })],
+    [Object.assign(cell('친구들이랑 자유롭게 사용해도 괜찮아용 링크만 보내면 바로 쓸 수 있어요!', 'gnote'), { colSpan: 10 })],
     [],
     row(['구분', '기능', '사용 방법', '비고'], 'ghead'),
     ...GUIDE_ROWS.map((r) => row(r, (j) => ['gsec', '', '', 'gnote'][j])),
+    [],
+    // 표 오른쪽 아래 구석에 작게
+    [...Array.from({ length: 9 }, () => cell('')), cell('sj', 'gsign')],
   ];
 }
 
